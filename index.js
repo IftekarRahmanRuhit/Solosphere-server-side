@@ -33,7 +33,7 @@ async function run() {
     app.post("/add-job", async (req, res) => {
       const jobData = req.body;
       const result = await jobsCollection.insertOne(jobData);
-      console.log(result);
+      // console.log(result);
       res.send(result);
     });
 
@@ -43,8 +43,13 @@ async function run() {
       res.send(result);
     });
 
-
-
+    // getting all jobs posted by a specific user
+    app.get("/jobs/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { "buyer.email": email };
+      const result = await jobsCollection.find(query).toArray();
+      res.send(result);
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
