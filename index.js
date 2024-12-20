@@ -49,8 +49,8 @@ async function run() {
         return res
           .status(400)
           .send('You have already placed a bid on this job!')
-      // 2. Save data in bids collection
 
+      // 2. Save data in bids collection
       const result = await bidsCollection.insertOne(bidData)
 
       // 3. Increase bid count in jobs collection
@@ -63,11 +63,14 @@ async function run() {
       res.send(result)
     })
 
-
-
-
-
-
+        // get all bids for a specific user
+        app.get('/bids/:email', async (req, res) => {
+          const email = req.params.email
+          const query = {email}
+          const result = await bidsCollection.find(query).toArray()
+          res.send(result)
+        })
+    
 
 
     // getting all jobs data from db
