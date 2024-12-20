@@ -63,11 +63,32 @@ async function run() {
       res.send(result)
     })
 
-        // get all bids for a specific user
-        app.get('/bids/:email', async (req, res) => {
-          const email = req.params.email
-          const query = {email}
-          const result = await bidsCollection.find(query).toArray()
+    // get all bids for a specific user
+    app.get('/bids/:email',  async (req, res) => {
+      const isBuyer = req.query.buyer
+      const email = req.params.email
+
+      let query = {}
+      if (isBuyer) {
+        query.buyer = email
+      } else {
+        query.email = email
+      }
+      const result = await bidsCollection.find(query).toArray()
+      res.send(result)
+    })
+
+
+        // update bid status
+        app.patch('/bid-status-update/:id', async (req, res) => {
+          const id = req.params.id
+          const { status } = req.body
+    
+          const filter = { _id: new ObjectId(id) }
+          const updated = {
+            $set: { status },
+          }
+          const result = await bidsCollection.updateOne(filter, updated)
           res.send(result)
         })
     
