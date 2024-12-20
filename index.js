@@ -1,13 +1,22 @@
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 
 const port = process.env.PORT || 9000;
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.iofbf.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -28,8 +37,39 @@ async function run() {
 
     const db = client.db("solo-db");
     const jobsCollection = db.collection("jobs");
-    const bidsCollection = db.collection('bids')
+    const bidsCollection = db.collection("bids");
 
+    // generate jwt
+    app.post("/jwt", async (req, res) => {
+      const email = req.body;
+      // create token
+      const token = jwt.sign(email, process.env.SECRET_KEY, {
+        expiresIn: "2d",
+      });
+      console.log(token);
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          // secure: false, //for localhost
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+
+
+    // logout || clear cookie from browser
+    app.get("/logout", async (req, res) => {
+      res
+        .clearCookie("token", {
+          maxAge: 0,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+
+    
     // saving a jobData in db
     app.post("/add-job", async (req, res) => {
       const jobData = req.body;
@@ -38,61 +78,58 @@ async function run() {
       res.send(result);
     });
 
-     // save a bid data in db
-     app.post('/add-bid', async (req, res) => {
-      const bidData = req.body
+    // save a bid data in db
+    app.post("/add-bid", async (req, res) => {
+      const bidData = req.body;
       // 1. if a user placed a bid already in this job
-      const query = { email: bidData.email, jobId: bidData.jobId }
-      const alreadyExist = await bidsCollection.findOne(query)
-      console.log('If already exist-->', alreadyExist)
+      const query = { email: bidData.email, jobId: bidData.jobId };
+      const alreadyExist = await bidsCollection.findOne(query);
+      console.log("If already exist-->", alreadyExist);
       if (alreadyExist)
         return res
           .status(400)
-          .send('You have already placed a bid on this job!')
+          .send("You have already placed a bid on this job!");
 
       // 2. Save data in bids collection
-      const result = await bidsCollection.insertOne(bidData)
+      const result = await bidsCollection.insertOne(bidData);
 
       // 3. Increase bid count in jobs collection
-      const filter = { _id: new ObjectId(bidData.jobId) }
+      const filter = { _id: new ObjectId(bidData.jobId) };
       const update = {
         $inc: { bid_count: 1 },
-      }
-      const updateBidCount = await jobsCollection.updateOne(filter, update)
-      console.log(updateBidCount)
-      res.send(result)
-    })
+      };
+      const updateBidCount = await jobsCollection.updateOne(filter, update);
+      console.log(updateBidCount);
+      res.send(result);
+    });
 
     // get all bids for a specific user
-    app.get('/bids/:email',  async (req, res) => {
-      const isBuyer = req.query.buyer
-      const email = req.params.email
+    app.get("/bids/:email", async (req, res) => {
+      const isBuyer = req.query.buyer;
+      const email = req.params.email;
 
-      let query = {}
+      let query = {};
       if (isBuyer) {
-        query.buyer = email
+        query.buyer = email;
       } else {
-        query.email = email
+        query.email = email;
       }
-      const result = await bidsCollection.find(query).toArray()
-      res.send(result)
-    })
+      const result = await bidsCollection.find(query).toArray();
+      res.send(result);
+    });
 
+    // update bid status
+    app.patch("/bid-status-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body;
 
-        // update bid status
-        app.patch('/bid-status-update/:id', async (req, res) => {
-          const id = req.params.id
-          const { status } = req.body
-    
-          const filter = { _id: new ObjectId(id) }
-          const updated = {
-            $set: { status },
-          }
-          const result = await bidsCollection.updateOne(filter, updated)
-          res.send(result)
-        })
-    
-
+      const filter = { _id: new ObjectId(id) };
+      const updated = {
+        $set: { status },
+      };
+      const result = await bidsCollection.updateOne(filter, updated);
+      res.send(result);
+    });
 
     // getting all jobs data from db
     app.get("/jobs", async (req, res) => {
@@ -117,46 +154,44 @@ async function run() {
     });
 
     // getting a single job data by id from db
-    app.get('/job/:id', async (req, res) => {
-      const id = req.params.id
-      const query = { _id: new ObjectId(id) }
-      const result = await jobsCollection.findOne(query)
-      res.send(result)
-    })
+    app.get("/job/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await jobsCollection.findOne(query);
+      res.send(result);
+    });
 
-        // saving a jobData in db
-        app.put('/update-job/:id', async (req, res) => {
-          const id = req.params.id
-          const jobData = req.body
-          const updated = {
-            $set: jobData,
-          }
-          const query = { _id: new ObjectId(id) }
-          const options = { upsert: true }
-          const result = await jobsCollection.updateOne(query, updated, options)
-          console.log(result)
-          res.send(result)
-        })
+    // saving a jobData in db
+    app.put("/update-job/:id", async (req, res) => {
+      const id = req.params.id;
+      const jobData = req.body;
+      const updated = {
+        $set: jobData,
+      };
+      const query = { _id: new ObjectId(id) };
+      const options = { upsert: true };
+      const result = await jobsCollection.updateOne(query, updated, options);
+      console.log(result);
+      res.send(result);
+    });
 
     // get all jobs
-    app.get('/all-jobs', async (req, res) => {
-      const filter = req.query.filter
-      const search = req.query.search
-      const sort = req.query.sort
-      let options = {}
-      if (sort) options = { sort: { deadline: sort === 'asc' ? 1 : -1 } }
+    app.get("/all-jobs", async (req, res) => {
+      const filter = req.query.filter;
+      const search = req.query.search;
+      const sort = req.query.sort;
+      let options = {};
+      if (sort) options = { sort: { deadline: sort === "asc" ? 1 : -1 } };
       let query = {
         title: {
           $regex: search,
-          $options: 'i',
+          $options: "i",
         },
-      }
-      if (filter) query.category = filter
-      const result = await jobsCollection.find(query, options).toArray()
-      res.send(result)
-    })
-
-
+      };
+      if (filter) query.category = filter;
+      const result = await jobsCollection.find(query, options).toArray();
+      res.send(result);
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
